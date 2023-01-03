@@ -325,7 +325,7 @@ def valid(pS,A,B,C):
     d = Det(pS[A[0]], pS[B[0]], pS[C[0]])
     s=int(A[1])*2-1
     return s*d<0
-def triangulate(pS,imin):
+def triangulate(pS,imin,scenes):
     #Triangulacja wielokąta monotonicznego
     n=len(pS)
     stack=queue.LifoQueue()
@@ -351,10 +351,12 @@ def triangulate(pS,imin):
             #Gdy wierzchołki są na różnych "gałęziach" wielokąta, lub wierzchołek jest najniższym w wielokącie
             last=B
             triangles.append((pS[A[0]],pS[B[0]],pS[C[0]]))
+            scenes.append(makeTriangulateScene(triangles.copy(),pS))
             while not stack.empty():
                 B=C
                 C=stack.get()
                 triangles.append((pS[A[0]],pS[B[0]],pS[C[0]]))
+                scenes.append(makeTriangulateScene(triangles.copy(),pS))
             stack.put(last)
             stack.put(A)
         else:
@@ -362,6 +364,7 @@ def triangulate(pS,imin):
             while True:
                 if valid(pS,A,B,C):
                     triangles.append((pS[A[0]], pS[B[0]], pS[C[0]]))
+                    scenes.append(makeTriangulateScene(triangles.copy(),pS))
                 else:
                     toput.append(B)
                 if not stack.empty():
@@ -375,6 +378,29 @@ def triangulate(pS,imin):
                 stack.put(toput[i])
             stack.put(A)
     return triangles
+def makeTriangulateScene(triangles,pS):
+    lines1=set()
+    lines2=[]
+    for triangle in triangles:
+        lines1.add((triangle[0],triangle[1]))
+        lines1.add((triangle[1],triangle[2]))
+        lines1.add((triangle[0],triangle[2]))
+    n=len(pS)
+    for i in range(n):
+        if not( (pS[i-1],pS[i]) in lines1) and (not(pS[i],pS[i-1]) in lines1):
+            lines2.append((pS[i-1],pS[i]))
+    return Scene([PointsCollection(pS)],[LinesCollection(list(lines1),color='blue'),LinesCollection(lines2,color='grey')])
+def makeDivideScene(diagonals,v,ps):
+    y=v[1]
+    broom=((0,y),(1,y))
+    lines=[]
+    diags=[]
+    for d in diagonals:
+        diags.append((pS[d[0]],pS[d[1]]))
+    n=len(pS)
+    for i in range(n):
+        lines.append((pS[i-1],pS[i]))
+    return Scene([PointsCollection(pS)],[LinesCollection([broom],color='black'),LinesCollection(lines,color='grey'),LinesCollection(diags,color='red')])
 def divide_classify(pS):
     #klasyfikacja wierzchołków dla potrzeb funkcji divide
     begin,end,divide,merge,default,lines=classify(pS)
@@ -393,7 +419,7 @@ def divide_classify(pS):
         if l[0][1]<l[1][1]:
             l=(l[1],l[0])
     return classified,lines
-def divide(pS):
+def divide(pS,scenes):
     classified,lines=divide_classify(pS)
     eventStruct=queue.Queue()
     diagonals=[]
@@ -402,6 +428,7 @@ def divide(pS):
         eventStruct.put(c)#Wstawiam do kolejki kolejne wierzcholki
     while not eventStruct.empty():
         v=eventStruct.get()#Wyjmuję wierzchołek z kolejki
+        scenes.append(makeDivideScene(diagonals.copy(),v,pS))
         if v[2]==0:
             #początkowy
             el=lines[v[3]]
@@ -457,9 +484,9 @@ def find_left(statestruct,point):
         if Det(k[0],k[1],point)>10**(-12) and (cur_left==None or Det(cur_left[0],cur_left[1],k[0])>10**(-12)):
             cur_left = k
     return cur_left
-def makeMonotonicTab(pS):
+def makeMonotonicTab(pS,scenes):
     #Dzielę wielokąt na wielokąty monotoniczne, wykorzystując jego podział przekątnymi
-    diags=divide(pS)#zbiór przekątnych dzielących wielokąt na wielokąty monotoniczne
+    diags=divide(pS,scenes)#zbiór przekątnych dzielących wielokąt na wielokąty monotoniczne
     d=len(diags)
     diagonals=[]
     for i in range(d):
@@ -491,14 +518,15 @@ def makeMonotonicTab(pS):
     #zwracam listę list wierzchołków w poszczególnych wielokątach monotonicznych
     return monotonic
 def triangulateMonotonic(pS):
-    monotonic=makeMonotonicTab(pS)
+    scenes=[]
+    monotonic=makeMonotonicTab(pS,scenes)
     triangles=[]
     p=[]
     l=[]
     i=0
     for m in monotonic:
         mSet,imin=getpoints(m)
-        triangles= triangulate(mSet,imin)
+        triangles= triangulate(mSet,imin,scenes)
         #wstawianie do odpowiednio list wierzchołków i krawędzi całych trójkątów.
         for triangle in triangles:
             p.append(triangle[0])
@@ -507,13 +535,15 @@ def triangulateMonotonic(pS):
             l.append([triangle[0],triangle[1]])
             l.append([triangle[2],triangle[1]])
             l.append([triangle[0],triangle[2]])
-        scene=Scene([PointsCollection(p,color='blue')],[LinesCollection(l,color='blue')])
-    plot=Plot([scene])
-    plot.draw()
+    scene=Scene([PointsCollection(p,color='blue')],[LinesCollection(l,color='blue')])
+    scenes.append(scene)
+    return scenes
 plot1 = Plot()
 plot1.draw()
 l=plot1.get_added_figure()
 li=l[0].lines
 pointSet=[p[0] for p in li]
 pS,imin=getpoints(pointSet)
-triangulateMonotonic(pS)
+scenes=triangulateMonotonic(pS)
+plot=Plot(scenes)
+plot.draw()
